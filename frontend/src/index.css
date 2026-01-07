@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #F2F2F7; /* iOS System Gray 6 */
+  color: #1C1C1E; /* iOS Label Color */
+}
+
+@keyframes float-up {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.5);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(-30px) translateX(-5px) scale(1);
+  }
+  30% {
+    transform: translateY(-80px) translateX(5px) scale(1);
+  }
+  50% {
+    transform: translateY(-140px) translateX(-5px) scale(1.1);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-200px) translateX(5px) scale(1.1);
+  }
+  100% {
+    transform: translateY(-300px) translateX(0) scale(1.2);
+    opacity: 0;
+  }
+}
+
+.animate-float-up {
+  animation-name: float-up;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
