@@ -5,20 +5,10 @@ const Notification = require('../models/Notification');
 // @access  Private
 exports.getNotifications = async (req, res) => {
   try {
-    const { email, role } = req.query;
-    
-    let filter = {};
-    // If it's a traveler, they might want to see their own notifications
-    // If it's an admin, they see all booking notifications
-    
-    if (role === 'user') {
-        // Traveler's specific notifications (if any)
-        // For now, let's just return notifications for their email if we store email in metadata
-        // Or if we had userId. Let's simplify for the demo.
-    }
+    const notifications = await Notification.find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(20);
 
-    const notifications = await Notification.find(filter).sort({ createdAt: -1 }).limit(20);
-    
     res.status(200).json({
       success: true,
       count: notifications.length,

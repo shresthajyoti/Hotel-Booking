@@ -34,41 +34,119 @@ const DashboardPage = () => {
   const [messageSearch, setMessageSearch] = useState('');
   const [revenueAnalytics, setRevenueAnalytics] = useState([]);
   const [propertyDistribution, setPropertyDistribution] = useState([]);
+  const [sourcesAnalytics, setSourcesAnalytics] = useState([]);
+  const [conversations, setConversations] = useState([]);
+  const [settingsFormData, setSettingsFormData] = useState({
+    name: '',
+    email: '',
+    phone: ''
+  });
+  const [passwordFormData, setPasswordFormData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const pollingInterval = useRef(null);
 
   const navigate = useNavigate();
   const modalRef = useRef(null);
 
   useEffect(() => {
     fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const notificationParams = `?email=${user.email}&role=admin`;
 
-      const [statsRes, bookingsRes, propertiesRes, guestsRes, notifRes, analyticsRes] = await Promise.all([
+      const [statsRes, bookingsRes, propertiesRes, guestsRes, notifRes, analyticsRes, convosRes] = await Promise.all([
         api.get(`${API_BASE_URL}/stats`),
         api.get(`${API_BASE_URL}/bookings`),
         api.get(`${API_BASE_URL}/properties`),
         api.get(`${API_BASE_URL}/guests`),
-        api.get(`/notifications${notificationParams}`),
-        api.get(`${API_BASE_URL}/analytics`)
+        api.get(`/notifications`),
+        api.get(`${API_BASE_URL}/analytics`),
+        api.get(`/messages/conversations/${user._id}`)
       ]);
 
-      if (statsRes.data.success) setStatsData(statsRes.data.data);
-      if (bookingsRes.data.success) setBookings(bookingsRes.data.data);
-      if (propertiesRes.data.success) setProperties(propertiesRes.data.data);
-      if (guestsRes.data.success) setGuests(guestsRes.data.data);
-      if (analyticsRes.data.success) {
-        setRevenueAnalytics(analyticsRes.data.data.revenue || []);
-        setPropertyDistribution(analyticsRes.data.data.distribution || []);
+      // Handle stats with static mock fallbacks for empty data
+      if (statsRes.data.success) {
+        const realStats = statsRes.data.data;
+        if (realStats.totalBookings === 0) {
+          setStatsData({
+            totalRevenue: 'Rs. 128.5K',
+            totalBookings: 24,
+            activeGuests: 12,
+            occupancy: '78%'
+          });
+        } else {
+          setStatsData(realStats);
+        }
       }
+
+      // Handle bookings with static mock fallbacks
+      if (bookingsRes.data.success) {
+        const realBookings = bookingsRes.data.data;
+        if (realBookings.length === 0) {
+          setBookings([
+            { _id: '1', guestName: 'Alice Johnson', email: 'alice@example.com', propertyName: 'Mountain Resort', checkInDate: new Date(), status: 'Confirmed' },
+            { _id: '2', guestName: 'Bob Smith', email: 'bob@example.com', propertyName: 'Lakeside Villa', checkInDate: new Date(Date.now() - 86400000), status: 'Pending' },
+            { _id: '3', guestName: 'Charlie Brown', email: 'charlie@example.com', propertyName: 'City Heights', checkInDate: new Date(Date.now() - 172800000), status: 'Confirmed' }
+          ]);
+        } else {
+          setBookings(realBookings);
+        }
+      }
+
+      if (propertiesRes.data.success) setProperties(propertiesRes.data.data);
+
+      // Handle guests with static mock fallbacks
+      if (guestsRes.data.success) {
+        const realGuests = guestsRes.data.data;
+        if (realGuests.length === 0) {
+          setGuests([
+            { _id: '1', name: 'Alice Johnson', email: 'alice@example.com', totalBookings: 2, lastBooking: new Date() },
+            { _id: '2', name: 'Bob Smith', email: 'bob@example.com', totalBookings: 1, lastBooking: new Date() }
+          ]);
+        } else {
+          setGuests(realGuests);
+        }
+      }
+
+      // Handle analytics with static mock fallbacks
+      if (analyticsRes.data.success) {
+        const data = analyticsRes.data.data;
+        setRevenueAnalytics(data.revenue && data.revenue.some(d => d.value > 0) ? data.revenue : [
+          { label: 'Jan', value: 45000 }, { label: 'Feb', value: 52000 }, { label: 'Mar', value: 48000 },
+          { label: 'Apr', value: 61000 }, { label: 'May', value: 55000 }, { label: 'Jun', value: 67000 },
+          { label: 'Jul', value: 72000 }, { label: 'Aug', value: 68000 }, { label: 'Sep', value: 75000 },
+          { label: 'Oct', value: 82000 }, { label: 'Nov', value: 88000 }, { label: 'Dec', value: 95000 }
+        ]);
+        setPropertyDistribution(data.distribution && data.distribution.length > 0 ? data.distribution : [
+          { name: 'Mountain View', percentage: 45 }, { name: 'City Suite', percentage: 35 }, { name: 'Lake House', percentage: 20 }
+        ]);
+        setSourcesAnalytics(data.sources && data.sources.length > 0 ? data.sources : [
+          { label: 'Direct', value: 60, color: '#0071e3' }, { label: 'Booking.com', value: 25, color: '#a855f7' }, { label: 'Others', value: 15, color: '#e5e7eb' }
+        ]);
+      }
+
       if (notifRes.data.success) {
         setNotifications(notifRes.data.data || []);
         setUnreadCount((notifRes.data.data || []).filter(n => !n.isRead).length);
       }
+      if (convosRes.data.success) {
+        setConversations(convosRes.data.data || []);
+      }
+
+      // Sync settings form
+      setSettingsFormData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || ''
+      });
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -80,20 +158,36 @@ const DashboardPage = () => {
   useEffect(() => {
     if (activeContact) {
       fetchMessages();
+      // Start polling for new messages when a contact is selected
+      pollingInterval.current = setInterval(fetchMessages, 3000);
+    } else {
+      if (pollingInterval.current) clearInterval(pollingInterval.current);
     }
+
+    return () => {
+      if (pollingInterval.current) clearInterval(pollingInterval.current);
+    };
   }, [activeContact]);
 
   const fetchMessages = async () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
+      if (!activeContact) return;
+
       const res = await api.get(`/messages?userId=${user._id}`);
       if (res.data.success) {
-        // Filter messages for current conversation
         const filtered = res.data.data.filter(m =>
           (m.senderId === user._id && m.receiverId === activeContact._id) ||
           (m.senderId === activeContact._id && m.receiverId === user._id)
         );
-        setMessages(filtered);
+
+        // Only update if messages actually changed to avoid unnecessary re-renders
+        setMessages(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(filtered)) {
+            return filtered;
+          }
+          return prev;
+        });
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
@@ -182,11 +276,51 @@ const DashboardPage = () => {
   const handleSignOut = () => {
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('userType');
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
     navigate('/login');
+  };
+
+  const handleSettingsSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.put('/auth/updatedetails', settingsFormData);
+      if (res.data.success) {
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const updatedUser = { ...currentUser, ...res.data.data };
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        alert('Profile updated successfully!');
+      }
+    } catch (error) {
+      alert(error.response?.data?.error || 'Update failed');
+    }
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (passwordFormData.newPassword !== passwordFormData.confirmPassword) {
+      return alert('Passwords do not match');
+    }
+    try {
+      const res = await api.put('/auth/updatepassword', {
+        currentPassword: passwordFormData.currentPassword,
+        newPassword: passwordFormData.newPassword
+      });
+      if (res.data.success) {
+        setPasswordFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        localStorage.setItem('token', res.data.token);
+        alert('Password updated successfully!');
+      }
+    } catch (error) {
+      alert(error.response?.data?.error || 'Password update failed');
+    }
   };
 
   const [isPropertyModalOpen, setIsPropertyModalOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState(null);
+  const [propertyImages, setPropertyImages] = useState(['']);
+  const [propertyAmenities, setPropertyAmenities] = useState([]);
+  const [amenityInput, setAmenityInput] = useState('');
 
   const filteredBookings = bookings.filter(booking =>
     (booking.guestName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -215,7 +349,8 @@ const DashboardPage = () => {
       pricePerNight: Number(formData.get('price')),
       rating: Number(formData.get('rating')),
       description: formData.get('description'),
-      images: [formData.get('image')]
+      images: propertyImages.filter(img => img.trim() !== ''),
+      amenities: propertyAmenities
     };
 
     try {
@@ -232,23 +367,56 @@ const DashboardPage = () => {
       }
       setIsPropertyModalOpen(false);
       setEditingProperty(null);
+      setPropertyImages(['']);
+      setPropertyAmenities([]);
     } catch (error) {
       console.error("Error saving property:", error);
     }
   };
 
+  const handleAddImageField = () => {
+    setPropertyImages([...propertyImages, '']);
+  };
+
+  const handleImageChange = (index, value) => {
+    const newImages = [...propertyImages];
+    newImages[index] = value;
+    setPropertyImages(newImages);
+  };
+
+  const handleRemoveImageField = (index) => {
+    if (propertyImages.length > 1) {
+      const newImages = propertyImages.filter((_, i) => i !== index);
+      setPropertyImages(newImages);
+    }
+  };
+
+  const handleAddAmenity = () => {
+    if (amenityInput.trim() && !propertyAmenities.includes(amenityInput.trim())) {
+      setPropertyAmenities([...propertyAmenities, amenityInput.trim()]);
+      setAmenityInput('');
+    }
+  };
+
+  const handleRemoveAmenity = (amenity) => {
+    setPropertyAmenities(propertyAmenities.filter(a => a !== amenity));
+  };
+
   const handleAddBooking = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
+    const selectedPropName = formData.get('property');
+    const selectedProp = properties.find(p => p.name === selectedPropName);
+
     const newBooking = {
       guestName: formData.get('guestName'),
       email: formData.get('email'),
-      propertyName: formData.get('property'), // Note: In a real app, you'd use propertyId
+      propertyName: selectedPropName,
       roomType: formData.get('roomType'),
       checkInDate: new Date().toISOString(),
       checkOutDate: new Date().toISOString(),
-      amount: 5000, // Mock amount
-      propertyId: "6584c3e8f8a2b5a1a8e1b2c4" // Mock ID
+      amount: selectedProp ? selectedProp.pricePerNight : 5000,
+      propertyId: selectedProp ? (selectedProp._id || selectedProp.id) : "6584c3e8f8a2b5a1a8e1b2c4"
     };
 
     try {
@@ -302,7 +470,7 @@ const DashboardPage = () => {
             <div>
               <p className="px-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Main</p>
               <nav className="space-y-0.5">
-                <SidebarItem icon={Home} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+                <SidebarItem icon={Home} label="Overview" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
                 <SidebarItem icon={Building2} label="Properties" active={activeTab === 'properties'} onClick={() => setActiveTab('properties')} />
                 <SidebarItem icon={Calendar} label="Bookings" active={activeTab === 'bookings'} badge={bookings.length > 0 ? bookings.length.toString() : null} onClick={() => setActiveTab('bookings')} />
                 <SidebarItem icon={Users} label="Guests" active={activeTab === 'guests'} onClick={() => setActiveTab('guests')} />
@@ -405,11 +573,11 @@ const DashboardPage = () => {
 
             <div className="flex items-center gap-3 pl-1">
               <div className="text-right hidden md:block">
-                <p className="text-sm font-semibold text-gray-900 leading-none">{JSON.parse(localStorage.getItem('user') || '{}').name || 'User'}</p>
-                <p className="text-[11px] text-gray-500 mt-1 leading-none">{localStorage.getItem('userType') === 'owner' ? 'Hotel Manager' : 'Traveler'}</p>
+                <p className="text-sm font-semibold text-gray-900 leading-none">{JSON.parse(localStorage.getItem('user') || '{}').name || 'Ram Sir'}</p>
+                <p className="text-[11px] text-gray-500 mt-1 leading-none">{localStorage.getItem('userType') === 'owner' ? 'Hotel Manager' : 'Admin'}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-gray-200 overflow-hidden border border-gray-200 shadow-sm">
-                <img src={`https://ui-avatars.com/api/?name=${JSON.parse(localStorage.getItem('user') || '{}').name || 'User'}&background=random`} alt="Profile" className="w-full h-full object-cover" />
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-green-500 to-green-600 overflow-hidden border border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
+                {JSON.parse(localStorage.getItem('user') || '{}').name?.split(' ').map(n => n[0]).join('') || 'RS'}
               </div>
             </div>
           </div>
@@ -424,9 +592,11 @@ const DashboardPage = () => {
               {/* Page Title */}
               <div className="flex justify-between items-end animate-enter">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+                    Admin Dashboard
+                  </h1>
                   <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                    <span>Overview</span>
+                    <span>Performance Overview</span>
                   </div>
                 </div>
                 <button
@@ -477,21 +647,26 @@ const DashboardPage = () => {
 
                   {/* CSS Bar Chart */}
                   <div className="h-56 flex items-end justify-between gap-3">
-                    {[40, 65, 55, 80, 60, 90, 75, 85, 95, 70, 60, 80].map((h, i) => (
-                      <div key={i} className="flex-1 flex flex-col justify-end group cursor-pointer">
-                        <div
-                          className="w-full bg-[#0071e3]/10 rounded-t-md transition-all duration-300 group-hover:bg-[#0071e3] relative"
-                          style={{ height: `${h}%` }}
-                        >
-                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                            {h}k
+                    {(revenueAnalytics.length > 0 ? revenueAnalytics : [40, 65, 55, 80, 60, 90, 75, 85, 95, 70, 60, 80]).map((item, i) => {
+                      const value = typeof item === 'object' ? item.value : item;
+                      const maxVal = Math.max(...(revenueAnalytics.map(d => d.value) || [100]));
+                      const h = typeof item === 'object' ? (value / maxVal) * 100 : item;
+                      return (
+                        <div key={i} className="flex-1 flex flex-col justify-end group cursor-pointer">
+                          <div
+                            className="w-full bg-[#0071e3]/10 rounded-t-md transition-all duration-300 group-hover:bg-[#0071e3] relative"
+                            style={{ height: `${Math.max(h, 5)}%` }}
+                          >
+                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                              {typeof item === 'object' ? `Rs. ${value.toLocaleString()}` : `${item}k`}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="flex justify-between mt-4 text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => (
+                    {(revenueAnalytics.length > 0 ? revenueAnalytics.map(d => d.label) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']).map(m => (
                       <span key={m}>{m}</span>
                     ))}
                   </div>
@@ -508,38 +683,43 @@ const DashboardPage = () => {
 
                   <div className="relative w-40 h-40 mx-auto mb-8 shrink-0">
                     <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
-                      <path className="text-gray-100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.8" />
-                      <path className="text-[#0071e3]" strokeDasharray="60, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.8" strokeLinecap="round" />
-                      <path className="text-purple-500" strokeDasharray="25, 100" strokeDashoffset="-60" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.8" strokeLinecap="round" />
+                      <circle cx="18" cy="18" r="15.9155" fill="none" stroke="#f3f4f6" strokeWidth="3.8" />
+                      {sourcesAnalytics.map((source, i) => {
+                        const total = sourcesAnalytics.reduce((acc, s) => acc + s.value, 0);
+                        const prevValues = sourcesAnalytics.slice(0, i).reduce((acc, s) => acc + s.value, 0);
+                        const dashArray = `${(source.value / total) * 100} 100`;
+                        const dashOffset = `-${(prevValues / total) * 100}`;
+                        return (
+                          <path
+                            key={i}
+                            className="transition-all duration-1000"
+                            stroke={source.color}
+                            strokeDasharray={dashArray}
+                            strokeDashoffset={dashOffset}
+                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none"
+                            strokeWidth="3.8"
+                            strokeLinecap="round"
+                          />
+                        );
+                      })}
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-2xl font-bold text-gray-900">1.2k</span>
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wide">Total</span>
+                      <span className="text-2xl font-bold text-gray-900">100%</span>
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wide">Share</span>
                     </div>
                   </div>
 
                   <div className="space-y-3 mt-auto">
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#0071e3]"></div>
-                        <span className="text-gray-600 text-xs">Direct Website</span>
+                    {sourcesAnalytics.map((source, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: source.color }}></div>
+                          <span className="text-gray-600 text-xs">{source.label}</span>
+                        </div>
+                        <span className="font-bold text-xs">{source.value}%</span>
                       </div>
-                      <span className="font-bold text-xs">60%</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
-                        <span className="text-gray-600 text-xs">Booking.com</span>
-                      </div>
-                      <span className="font-bold text-xs">25%</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-gray-200"></div>
-                        <span className="text-gray-600 text-xs">Others</span>
-                      </div>
-                      <span className="font-bold text-xs">15%</span>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -572,7 +752,7 @@ const DashboardPage = () => {
                     <tbody className="divide-y divide-gray-50">
                       {filteredBookings.length > 0 ? (
                         filteredBookings.map((booking) => (
-                          <tr key={booking.id} className="hover:bg-gray-50/80 transition-colors group">
+                          <tr key={booking._id || booking.id} className="hover:bg-gray-50/80 transition-colors group">
                             <td className="py-3 px-6">
                               <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-full bg-linear-to-br from-gray-100 to-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 border border-white shadow-sm">
@@ -628,6 +808,8 @@ const DashboardPage = () => {
                 <button
                   onClick={() => {
                     setEditingProperty(null);
+                    setPropertyImages(['']);
+                    setPropertyAmenities([]);
                     setIsPropertyModalOpen(true);
                   }}
                   className="bg-[#0071e3] text-white px-5 py-2.5 rounded-xl font-medium text-sm hover:bg-[#0077ed] transition-all shadow-lg shadow-blue-500/25 flex items-center gap-2"
@@ -650,12 +832,24 @@ const DashboardPage = () => {
                       <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
                         <MapPin size={12} /> {property.location}
                       </p>
+                      <div className="mt-3 flex flex-wrap gap-1.5 min-h-[22px]">
+                        {property.amenities?.slice(0, 3).map((amenity, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 bg-gray-50 text-[10px] text-gray-400 rounded-md border border-gray-100">
+                            {amenity}
+                          </span>
+                        ))}
+                        {property.amenities?.length > 3 && (
+                          <span className="text-[10px] text-gray-400">+{property.amenities.length - 3} more</span>
+                        )}
+                      </div>
                       <div className="mt-4 flex justify-between items-center">
                         <span className="text-sm font-semibold text-[#0071e3]">Rs. {property.pricePerNight} / Night</span>
                         <div className="flex gap-2">
                           <button
                             onClick={() => {
                               setEditingProperty(property);
+                              setPropertyImages(property.images || ['']);
+                              setPropertyAmenities(property.amenities || []);
                               setIsPropertyModalOpen(true);
                             }}
                             className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-[#0071e3] transition-colors"
@@ -799,25 +993,31 @@ const DashboardPage = () => {
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                    {guests.filter(g => g.name.toLowerCase().includes(messageSearch.toLowerCase())).length > 0 ? (
-                      guests.filter(g => g.name.toLowerCase().includes(messageSearch.toLowerCase())).map((guest, i) => (
-                        <div
-                          key={i}
-                          onClick={() => setActiveContact(guest)}
-                          className={`p-4 hover:bg-gray-50 cursor-pointer flex gap-3 items-center border-b border-gray-50/50 transition-colors ${activeContact?.email === guest.email ? 'bg-blue-50/50' : ''}`}
-                        >
-                          <div className="w-10 h-10 rounded-full bg-linear-to-br from-blue-50 to-blue-100 text-[#0071e3] flex items-center justify-center font-bold text-sm">
-                            {guest.name.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start">
-                              <p className="font-semibold text-sm text-gray-900 truncate">{guest.name}</p>
-                              <span className="text-[10px] text-gray-400">12:45</span>
+                    {/* Combine conversations and guests, showing unique users */}
+                    {[...conversations, ...guests.filter(g => !conversations.some(c => c._id === g._id))]
+                      .filter(u => u.name.toLowerCase().includes(messageSearch.toLowerCase()))
+                      .length > 0 ? (
+                      [...conversations, ...guests.filter(g => !conversations.some(c => c._id === g._id))]
+                        .filter(u => u.name.toLowerCase().includes(messageSearch.toLowerCase())).map((user, i) => (
+                          <div
+                            key={i}
+                            onClick={() => setActiveContact(user)}
+                            className={`p-4 hover:bg-gray-50 cursor-pointer flex gap-3 items-center border-b border-gray-50/50 transition-colors ${activeContact?._id === user._id ? 'bg-blue-50/50' : ''}`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-linear-to-br from-blue-50 to-blue-100 text-[#0071e3] flex items-center justify-center font-bold text-sm">
+                              {user.name.charAt(0)}
                             </div>
-                            <p className="text-xs text-gray-500 truncate mt-0.5">Booking query regarding...</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-start">
+                                <p className="font-semibold text-sm text-gray-900 truncate">{user.name}</p>
+                                <span className="text-[10px] text-gray-400 capitalize">
+                                  {user.role}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 truncate mt-0.5">{user.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ))
                     ) : (
                       <div className="p-8 text-center text-gray-400 text-sm">No conversations found</div>
                     )}
@@ -846,35 +1046,28 @@ const DashboardPage = () => {
                       </div>
 
                       {/* Messages Area */}
-                      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                        <div className="flex justify-center my-4">
-                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest bg-gray-100 px-2 py-1 rounded-md">Today</span>
-                        </div>
-
-                        <div className="flex flex-col gap-2 max-w-[70%]">
-                          <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700">
-                            Hello! I have a question about my booking for next week. Is breakfast included in the Deluxe Room?
+                      <div className="flex-1 overflow-y-auto p-6 space-y-4 flex flex-col">
+                        {messages.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-full text-gray-400 opacity-60">
+                            <Mail size={40} className="mb-2" />
+                            <p className="text-sm italic">No messages yet. Start the conversation!</p>
                           </div>
-                          <span className="text-[10px] text-gray-400 ml-1">10:30 AM</span>
-                        </div>
+                        )}
 
-                        <div className="flex flex-col gap-2 max-w-[70%] self-end items-end">
-                          <div className="bg-[#0071e3] p-3 rounded-2xl rounded-tr-none shadow-md text-sm text-white">
-                            Hello! Yes, all Deluxe Room bookings include a complimentary buffet breakfast at our Rooftop Garden.
-                          </div>
-                          <span className="text-[10px] text-gray-400 mr-1">10:32 AM</span>
-                        </div>
-
-                        {messages.map((msg, i) => (
-                          <div key={i} className={`flex flex-col gap-2 max-w-[70%] ${msg.senderId === JSON.parse(localStorage.getItem('user'))._id ? 'self-end items-end' : ''}`}>
-                            <div className={`p-3 rounded-2xl ${msg.senderId === JSON.parse(localStorage.getItem('user'))._id ? 'bg-[#0071e3] text-white rounded-tr-none shadow-md' : 'bg-white text-gray-700 rounded-tl-none shadow-sm border border-gray-100'} text-sm`}>
-                              {msg.content}
+                        {messages.map((msg, i) => {
+                          const isMe = msg.senderId === JSON.parse(localStorage.getItem('user'))._id;
+                          return (
+                            <div key={i} className={`flex flex-col gap-1 max-w-[80%] ${isMe ? 'self-end items-end' : 'self-start items-start'}`}>
+                              <div className={`p-3 rounded-2xl ${isMe ? 'bg-[#0071e3] text-white rounded-tr-none shadow-md' : 'bg-white text-gray-700 rounded-tl-none shadow-sm border border-gray-100'} text-sm`}>
+                                {msg.content}
+                              </div>
+                              <span className="text-[10px] text-gray-400 px-1">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             </div>
-                            <span className={`text-[10px] text-gray-400 ${msg.senderId === JSON.parse(localStorage.getItem('user'))._id ? 'mr-1' : 'ml-1'}`}>
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
+                        <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
                       </div>
 
                       {/* Chat Input */}
@@ -1013,37 +1206,95 @@ const DashboardPage = () => {
 
               <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-8 border-b border-gray-100 flex items-center gap-6 bg-gray-50/30">
-                  <img src={`https://ui-avatars.com/api/?name=${JSON.parse(localStorage.getItem('user'))?.fullName || 'User'}&background=0071e3&color=fff&size=128`} className="w-20 h-20 rounded-2xl shadow-lg shadow-blue-500/10" alt="Profile" />
+                  <div className="w-20 h-20 rounded-2xl bg-[#0071e3] flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-blue-500/10">
+                    {settingsFormData.name?.charAt(0)}
+                  </div>
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">{JSON.parse(localStorage.getItem('user'))?.fullName}</h2>
-                    <p className="text-sm text-gray-500">{JSON.parse(localStorage.getItem('user'))?.email}</p>
+                    <h2 className="text-lg font-bold text-gray-900">{settingsFormData.name}</h2>
+                    <p className="text-sm text-gray-500">{settingsFormData.email}</p>
                     <button className="text-xs font-bold text-[#0071e3] mt-2 hover:underline">Change Photo</button>
                   </div>
                 </div>
-                <form className="p-8 space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Full Name</label>
-                      <input type="text" defaultValue={JSON.parse(localStorage.getItem('user'))?.fullName} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm" />
+                <div className="p-8 space-y-10">
+                  {/* Profile Form */}
+                  <form onSubmit={handleSettingsSubmit} className="space-y-6">
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-lg inline-block">Profile Information</h3>
+                    <div className="grid grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Full Name</label>
+                        <input
+                          type="text"
+                          value={settingsFormData.name}
+                          onChange={(e) => setSettingsFormData({ ...settingsFormData, name: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Email Address</label>
+                        <input
+                          type="email"
+                          value={settingsFormData.email}
+                          onChange={(e) => setSettingsFormData({ ...settingsFormData, email: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                        />
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Email Address</label>
-                      <input type="email" defaultValue={JSON.parse(localStorage.getItem('user'))?.email} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm" />
+                      <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Phone Number</label>
+                      <input
+                        type="text"
+                        value={settingsFormData.phone}
+                        onChange={(e) => setSettingsFormData({ ...settingsFormData, phone: e.target.value })}
+                        placeholder="+977 98XXXXXXXX"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                      />
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Timezone</label>
-                    <select className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm">
-                      <option>Kathmandu (GMT+05:45)</option>
-                      <option>London (GMT+00:00)</option>
-                      <option>New York (GMT-05:00)</option>
-                    </select>
-                  </div>
-                  <div className="pt-4 border-t border-gray-100 flex justify-end gap-3">
-                    <button type="button" className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl">Discard</button>
-                    <button type="submit" onClick={(e) => { e.preventDefault(); alert('Profile updated successfully!'); }} className="px-5 py-2.5 bg-[#0071e3] text-white rounded-xl font-medium text-sm hover:bg-[#0077ed] shadow-lg shadow-blue-500/20">Save Changes</button>
-                  </div>
-                </form>
+                    <div className="flex justify-end pt-2">
+                      <button type="submit" className="px-6 py-2.5 bg-[#0071e3] text-white rounded-xl font-semibold text-sm hover:bg-[#0077ed] shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Update Profile</button>
+                    </div>
+                  </form>
+
+                  <div className="h-px bg-gray-100"></div>
+
+                  {/* Password Form */}
+                  <form onSubmit={handlePasswordSubmit} className="space-y-6">
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-widest bg-gray-50 px-3 py-1.5 rounded-lg inline-block">Security</h3>
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Current Password</label>
+                        <input
+                          type="password"
+                          value={passwordFormData.currentPassword}
+                          onChange={(e) => setPasswordFormData({ ...passwordFormData, currentPassword: e.target.value })}
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">New Password</label>
+                          <input
+                            type="password"
+                            value={passwordFormData.newPassword}
+                            onChange={(e) => setPasswordFormData({ ...passwordFormData, newPassword: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Confirm New Password</label>
+                          <input
+                            type="password"
+                            value={passwordFormData.confirmPassword}
+                            onChange={(e) => setPasswordFormData({ ...passwordFormData, confirmPassword: e.target.value })}
+                            className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <button type="submit" className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-semibold text-sm hover:bg-black shadow-lg active:scale-95 transition-all">Update Password</button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           )}
@@ -1077,9 +1328,13 @@ const DashboardPage = () => {
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Property</label>
                   <select name="property" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm appearance-none">
-                    <option>Mountain View</option>
-                    <option>Lakeside Inn</option>
-                    <option>Heritage Hotel</option>
+                    {properties.length > 0 ? (
+                      properties.map(p => (
+                        <option key={p._id || p.id}>{p.name}</option>
+                      ))
+                    ) : (
+                      <option>No Properties Available</option>
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1153,8 +1408,80 @@ const DashboardPage = () => {
                 <textarea name="description" defaultValue={editingProperty?.description} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm h-24 resize-none"></textarea>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Image URL</label>
-                <input type="text" name="image" defaultValue={editingProperty?.images?.[0]} placeholder="https://..." className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm" />
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase">Property Images</label>
+                  <button
+                    type="button"
+                    onClick={handleAddImageField}
+                    className="text-[10px] font-bold text-[#0071e3] flex items-center gap-1 hover:underline"
+                  >
+                    <Plus size={12} /> Add More
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {propertyImages.map((img, index) => (
+                    <div key={index} className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={img}
+                          onChange={(e) => handleImageChange(index, e.target.value)}
+                          placeholder="Image URL (https://...)"
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                        />
+                      </div>
+                      {index > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImageField(index)}
+                          className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {/* Image Previews */}
+                <div className="flex gap-2 mt-3 overflow-x-auto pb-2">
+                  {propertyImages.filter(img => img.trim() !== '').map((img, index) => (
+                    <div key={index} className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200 shrink-0 shadow-sm relative group">
+                      <img src={img} alt={`Preview ${index}`} className="w-full h-full object-cover" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Invalid+URL' }} />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button type="button" onClick={() => handleRemoveImageField(index)} className="text-white"><X size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Amenities</label>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    type="text"
+                    value={amenityInput}
+                    onChange={(e) => setAmenityInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddAmenity())}
+                    placeholder="e.g. WiFi, Pool, Spa"
+                    className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddAmenity}
+                    className="px-4 bg-[#0071e3] text-white rounded-xl text-sm font-medium hover:bg-[#0077ed]"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {propertyAmenities.map((amenity, index) => (
+                    <span key={index} className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-[#0071e3] rounded-full text-xs font-medium border border-blue-100">
+                      {amenity}
+                      <button type="button" onClick={() => handleRemoveAmenity(amenity)} className="hover:text-red-500"><X size={12} /></button>
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsPropertyModalOpen(false)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors">Cancel</button>

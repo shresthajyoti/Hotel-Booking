@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, MapPin, Calendar, Users, ArrowRight, Star } from 'lucide-react';
+import api from '../utils/api';
+import { hotels } from '../data/hotels';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -23,15 +25,15 @@ const LandingPage = () => {
 
   useEffect(() => {
     const tl = gsap.timeline();
-    tl.fromTo(heroTextRef.current, 
-      { opacity: 0, y: 30 }, 
+    tl.fromTo(heroTextRef.current,
+      { opacity: 0, y: 30 },
       { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }
     )
-    .fromTo(searchBarRef.current, 
-      { opacity: 0, y: 30 }, 
-      { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" },
-      "-=0.4"
-    );
+      .fromTo(searchBarRef.current,
+        { opacity: 0, y: 30 },
+        { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" },
+        "-=0.4"
+      );
   }, []);
 
   // Scroll Animations for Bento Grid
@@ -56,7 +58,7 @@ const LandingPage = () => {
   // Auto-slide background images
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) => 
+      setCurrentImageIndex((prevIndex) =>
         (prevIndex + 1) % backgroundImages.length
       );
     }, 5000); // Change image every 5 seconds
@@ -64,16 +66,31 @@ const LandingPage = () => {
     return () => clearInterval(interval);
   }, [backgroundImages.length]);
 
-  const rooms = [
-    { id: 1, type: 'Villa', name: 'Fishtail Lodge', location: 'Lakeside, Pokhara', rating: '4.9', price: '18,500', image: 'https://images.unsplash.com/photo-1584132967334-10e028bd69f7?q=80&w=2070&auto=format&fit=crop' },
-    { id: 2, type: 'Villa', name: 'Club Himalaya', location: 'Nagarkot, Bhaktapur', rating: '4.8', price: '14,000', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2070&auto=format&fit=crop' },
-    { id: 3, type: 'Villa', name: 'Moksha Mustang', location: 'Jomsom, Mustang', rating: '4.9', price: '28,000', image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2070&auto=format&fit=crop' },
-    { id: 4, type: 'Villa', name: 'The Dwarika\'s Hotel', location: 'Battisputali, Kathmandu', rating: '5.0', price: '35,000', image: 'https://images.unsplash.com/photo-1605640840605-14ac1855827b?q=80&w=2070&auto=format&fit=crop' },
-    { id: 5, type: 'Apartment', name: 'Thamel Eco Resort', location: 'Thamel, Kathmandu', rating: '4.6', price: '8,500', image: 'https://images.unsplash.com/photo-1596436889106-be35e843f974?q=80&w=2070&auto=format&fit=crop' },
-    { id: 6, type: 'Apartment', name: 'Temple Tree Resort', location: 'Gaurighat, Pokhara', rating: '4.7', price: '12,500', image: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?q=80&w=2070&auto=format&fit=crop' },
-  ];
+  const [apiRooms, setApiRooms] = useState([]);
+  const rooms = apiRooms.length > 0 ? apiRooms : hotels;
 
-  const filteredRooms = rooms.filter(room => room.type === activeTab);
+  useEffect(() => {
+    const fetchApiRooms = async () => {
+      try {
+        const res = await api.get('/properties');
+        if (res.data.success) {
+          const mapped = res.data.data.map(p => ({
+            ...p,
+            id: p._id,
+            price: p.pricePerNight,
+            type: p.type || 'Villa',
+            image: p.images?.[0] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500'
+          }));
+          setApiRooms(mapped);
+        }
+      } catch (error) {
+        console.error("Error fetching rooms:", error);
+      }
+    };
+    fetchApiRooms();
+  }, []);
+
+  const filteredRooms = rooms.filter(room => (room.type || 'Villa') === activeTab).slice(0, 6);
 
   const statsNumberRef = useRef(null);
 
@@ -98,22 +115,21 @@ const LandingPage = () => {
       {/* Hero Section with Auto-Sliding Background */}
       <section className="relative h-[600px] lg:h-[700px]">
         <div className="absolute inset-0 overflow-hidden">
-        {/* Background Images Carousel */}
-        {backgroundImages.map((image, index) => (
-          <div 
-            key={index}
-            className={`absolute inset-0 transition-opacity duration-1000 ${
-              index === currentImageIndex ? 'opacity-100' : 'opacity-0'
-            }`}
-          >
-            <img 
-              src={image} 
-              alt={`Luxury Resort Nepal ${index + 1}`} 
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
-          </div>
-        ))}
+          {/* Background Images Carousel */}
+          {backgroundImages.map((image, index) => (
+            <div
+              key={index}
+              className={`absolute inset-0 transition-opacity duration-1000 ${index === currentImageIndex ? 'opacity-100' : 'opacity-0'
+                }`}
+            >
+              <img
+                src={image}
+                alt={`Luxury Resort Nepal ${index + 1}`}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
+            </div>
+          ))}
         </div>
 
         {/* Hero Content - Centered Text */}
@@ -123,11 +139,11 @@ const LandingPage = () => {
               <Star size={14} className="text-white fill-white" />
               <span className="text-xs font-semibold tracking-wide">4.9 Rating • Certified Excellence</span>
             </div>
-            
+
             <h1 className="text-5xl md:text-7xl lg:text-8xl font-semibold mb-6 tracking-tight drop-shadow-xl">
               Enjoy Your Holiday
             </h1>
-            
+
             <p className="text-xl md:text-2xl font-medium opacity-90 drop-shadow-lg max-w-2xl mx-auto leading-relaxed">
               Experience the finest hotels in Nepal at the best prices.
             </p>
@@ -156,8 +172,8 @@ const LandingPage = () => {
               {/* Check In */}
               <div className="flex-1 px-6 py-3 w-full md:w-auto border-b md:border-b-0 md:border-r border-gray-200/50">
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Check In</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   className="w-full outline-none text-[15px] font-medium text-gray-900 bg-transparent cursor-pointer"
                   defaultValue={new Date().toISOString().split('T')[0]}
                 />
@@ -166,8 +182,8 @@ const LandingPage = () => {
               {/* Check Out */}
               <div className="flex-1 px-6 py-3 w-full md:w-auto border-b md:border-b-0 md:border-r border-gray-200/50">
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Check Out</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   className="w-full outline-none text-[15px] font-medium text-gray-900 bg-transparent cursor-pointer"
                 />
               </div>
@@ -185,8 +201,8 @@ const LandingPage = () => {
               </div>
 
               {/* Search Button */}
-              <Link 
-                to="/search" 
+              <Link
+                to="/search"
                 className="bg-[#1D1D1F] text-white px-8 py-4 rounded-3xl font-semibold hover:bg-black transition-all shadow-lg hover:shadow-xl w-full md:w-auto text-center"
               >
                 Search
@@ -199,7 +215,7 @@ const LandingPage = () => {
       {/* About Section - Bento Grid Style */}
       <section className="container mx-auto px-6 mt-40 mb-32">
         <div className="bento-grid grid grid-cols-1 lg:grid-cols-4 gap-6">
-          
+
           {/* Top Left - Main Text Card */}
           <div className="bento-item lg:col-span-2 bg-white rounded-[2.5rem] p-12 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow min-h-[400px]">
             <div>
@@ -216,7 +232,7 @@ const LandingPage = () => {
           </div>
 
           {/* Top Middle - Stats Card 1 */}
-          <div 
+          <div
             className="bento-item lg:col-span-1 bg-white rounded-[2.5rem] p-10 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow min-h-[400px] group cursor-default"
             onMouseEnter={handleStatsHover}
           >
@@ -246,17 +262,17 @@ const LandingPage = () => {
 
           {/* Bottom Left - Large Image */}
           <div className="bento-item lg:col-span-3 h-[450px] rounded-[2.5rem] overflow-hidden relative group shadow-sm">
-            <img 
-              src="https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=1600&q=80" 
-              alt="Luxury Resort" 
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+            <img
+              src="https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=1600&q=80"
+              alt="Luxury Resort"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors"></div>
           </div>
 
           {/* Bottom Right - Stats Card 3 with Avatars & Live Reactions */}
           <div className="bento-item lg:col-span-1 bg-white rounded-[2.5rem] p-10 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow h-[450px] relative group">
-            
+
             {/* Floating Emojis Container */}
             <div className="absolute inset-0 pointer-events-none z-0">
               {/* We will use a simple CSS animation for continuous floating emojis */}
@@ -281,15 +297,15 @@ const LandingPage = () => {
               <h3 className="text-6xl font-semibold text-[#1D1D1F] mb-2 tracking-tighter">1.5k+</h3>
               <p className="text-[#86868B] font-medium text-lg">Happy Customers</p>
             </div>
-            
+
             <div className="relative z-10">
               <div className="flex -space-x-4 mb-4">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="w-14 h-14 rounded-full border-4 border-white overflow-hidden shadow-sm relative group/avatar">
-                    <img 
-                      src={`https://i.pravatar.cc/150?img=${i + 10}`} 
-                      alt="User" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={`https://i.pravatar.cc/150?img=${i + 10}`}
+                      alt="User"
+                      className="w-full h-full object-cover"
                     />
                     {/* Heart pop on hover */}
                     <div className="absolute inset-0 bg-black/20 hidden group-hover/avatar:flex items-center justify-center backdrop-blur-[1px]">
@@ -301,7 +317,7 @@ const LandingPage = () => {
                   +2k
                 </div>
               </div>
-              
+
               {/* Live Indicator */}
               <div className="flex items-center gap-2 bg-green-50 w-fit px-3 py-1.5 rounded-full border border-green-100">
                 <span className="relative flex h-2.5 w-2.5">
@@ -321,18 +337,17 @@ const LandingPage = () => {
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-end mb-12 gap-6">
             <div>
-               <h2 className="text-4xl font-semibold text-[#1D1D1F] mb-2 tracking-tight">Featured Stays</h2>
-               <p className="text-[#86868B] text-lg">Handpicked for your comfort.</p>
+              <h2 className="text-4xl font-semibold text-[#1D1D1F] mb-2 tracking-tight">Featured Stays</h2>
+              <p className="text-[#86868B] text-lg">Handpicked for your comfort.</p>
             </div>
-            
+
             <div className="flex bg-[#F5F5F7] p-1 rounded-full">
               {['Villa', 'Apartment'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-8 py-2.5 rounded-full text-sm font-semibold transition-all ${
-                    activeTab === tab ? 'bg-white shadow-sm text-[#1D1D1F]' : 'text-[#86868B] hover:text-[#1D1D1F]'
-                  }`}
+                  className={`px-8 py-2.5 rounded-full text-sm font-semibold transition-all ${activeTab === tab ? 'bg-white shadow-sm text-[#1D1D1F]' : 'text-[#86868B] hover:text-[#1D1D1F]'
+                    }`}
                 >
                   {tab}
                 </button>
@@ -342,19 +357,19 @@ const LandingPage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {filteredRooms.map((room) => (
-              <Link 
+              <Link
                 key={room.id}
-                to="/search"
+                to={`/hotel/${room.id}`}
                 className="group bg-white rounded-4xl overflow-hidden border border-gray-100 hover:border-gray-200 hover:shadow-xl transition-all duration-300"
               >
                 <div className="relative h-64 overflow-hidden">
-                  <img 
-                    src={room.image} 
-                    alt={room.name} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                  <img
+                    src={room.image}
+                    alt={room.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                   />
                   <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-bold text-[#1D1D1F] shadow-sm">
-                    Rs. {room.price}
+                    Rs. {room.price.toLocaleString()}
                   </div>
                 </div>
 
@@ -369,7 +384,7 @@ const LandingPage = () => {
                     <span>{room.location}</span>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-medium text-[#1D1D1F] mt-4 bg-[#F5F5F7] w-fit px-3 py-1 rounded-full">
-                    <Star size={12} className="fill-black text-black" /> {room.rating}
+                    <Star size={12} className="fill-yellow-500 text-yellow-500" /> {room.rating}
                   </div>
                 </div>
               </Link>

@@ -32,6 +32,7 @@ exports.getProperty = async (req, res) => {
 // @access  Private
 exports.createProperty = async (req, res) => {
   try {
+    req.body.owner = req.user._id;
     const property = await Property.create(req.body);
     res.status(201).json({ success: true, data: property });
   } catch (error) {

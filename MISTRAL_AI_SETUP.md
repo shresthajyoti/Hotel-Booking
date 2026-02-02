@@ -5,6 +5,7 @@ The AI Assistant in this hotel booking application is now powered by **Mistral A
 
 ## Features
 - 🤖 **AI-Powered Conversations**: Natural language understanding using Mistral AI's language models
+- ✨ **Dynamic Suggestions**: AI automatically suggests the next questions you might want to ask
 - 🏨 **Smart Hotel Recommendations**: AI analyzes user preferences for location and budget
 - 🔄 **Fallback Support**: Automatically falls back to local logic if API is unavailable
 - 💬 **Contextual Responses**: Maintains conversation context for better recommendations

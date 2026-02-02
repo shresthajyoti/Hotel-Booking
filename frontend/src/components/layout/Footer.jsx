@@ -6,10 +6,10 @@ const Footer = () => {
   return (
     <footer className="bg-[#F5F5F7] text-[#1D1D1F] pt-16 pb-8 text-[12px] leading-relaxed">
       <div className="container mx-auto px-6">
-        
+
         {/* Top Section: Links Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12 border-b border-gray-200 pb-12">
-          
+
           {/* Brand Column */}
           <div className="col-span-2 lg:col-span-2">
             <Link to="/" className="flex items-center gap-2 mb-4">
@@ -49,9 +49,7 @@ const Footer = () => {
                 {localStorage.getItem('isAuthenticated') === 'true' ? (
                   localStorage.getItem('userType') === 'owner' ? (
                     <Link to="/dashboard" className="hover:underline">Hotel Owner Dashboard</Link>
-                  ) : (
-                    <Link to="/portal" className="hover:underline">My Traveler Portal</Link>
-                  )
+                  ) : null
                 ) : (
                   <Link to="/dashboard" className="hover:underline">Hotel Owner Dashboard</Link>
                 )}

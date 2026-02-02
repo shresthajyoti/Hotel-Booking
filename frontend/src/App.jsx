@@ -5,7 +5,6 @@ import SearchPage from './pages/SearchPage';
 import HotelDetailsPage from './pages/HotelDetailsPage';
 import BookingPage from './pages/BookingPage';
 import DashboardPage from './pages/DashboardPage';
-import TravelerPortal from './pages/TravelerPortal';
 import AboutPage from './pages/AboutPage';
 import RoomsPage from './pages/RoomsPage';
 import ServicesPage from './pages/ServicesPage';
@@ -98,11 +97,6 @@ const AppContent = () => {
         <Route element={<RoleProtectedRoute allowedRoles={['owner']} />}>
           {/* Hotel Owner Dashboard (Standalone Layout) */}
           <Route path="/dashboard" element={<DashboardPage />} />
-        </Route>
-
-        {/* Traveler Protected Routes */}
-        <Route element={<RoleProtectedRoute allowedRoles={['traveler']} />}>
-          <Route path="/portal" element={<TravelerPortal />} />
         </Route>
 
         {/* Protected Routes for All Authenticated Users */}

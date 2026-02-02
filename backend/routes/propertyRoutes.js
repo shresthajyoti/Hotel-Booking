@@ -5,8 +5,8 @@ const router = express.Router();
 
 router.get('/', getProperties);
 router.get('/:id', getProperty);
-router.post('/', protect, authorize('admin'), createProperty);
-router.put('/:id', protect, authorize('admin'), updateProperty);
-router.delete('/:id', protect, authorize('admin'), deleteProperty);
+router.post('/', protect, authorize('admin', 'owner'), createProperty);
+router.put('/:id', protect, authorize('admin', 'owner'), updateProperty);
+router.delete('/:id', protect, authorize('admin', 'owner'), deleteProperty);
 
 module.exports = router;

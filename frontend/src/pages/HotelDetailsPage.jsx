@@ -259,7 +259,7 @@ const HotelDetailsPage = () => {
               </div>
               <Link
                 to="/booking"
-                state={{ hotelId: hotel.id, hotelName: hotel.name, price: hotel.price, total: hotel.price * 4 + 5000, dates: "Oct 12 - Oct 16", roomType: "Deluxe Room" }}
+                state={{ hotelId: hotel._id || hotel.id, hotelName: hotel.name, price: hotel.price, total: hotel.price * 4 + 5000, dates: "Oct 12 - Oct 16", roomType: "Deluxe Room" }}
                 className="block w-full bg-black text-white text-center py-4 rounded-xl font-bold hover:bg-gray-800 transition-colors"
               >
                 Reserve Now

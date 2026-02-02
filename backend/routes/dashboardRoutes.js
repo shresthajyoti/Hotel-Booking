@@ -7,9 +7,9 @@ router.use(protect);
 
 router.get('/stats', getStats);
 router.get('/bookings', getRecentBookings);
-router.post('/bookings', authorize('admin'), addBooking);
-router.get('/properties', authorize('admin'), getProperties);
-router.get('/guests', authorize('admin'), getGuests);
-router.get('/analytics', authorize('admin'), getRevenueAnalytics);
+router.post('/bookings', authorize('admin', 'owner'), addBooking);
+router.get('/properties', authorize('admin', 'owner'), getProperties);
+router.get('/guests', authorize('admin', 'owner'), getGuests);
+router.get('/analytics', authorize('admin', 'owner'), getRevenueAnalytics);
 
 module.exports = router;

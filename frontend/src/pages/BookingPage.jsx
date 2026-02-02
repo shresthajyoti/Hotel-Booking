@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { CheckCircle, CreditCard, Calendar } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import gsap from "gsap";
+import api from "../utils/api";
 
 const BookingPage = () => {
   const [step, setStep] = useState(1);
@@ -35,36 +36,38 @@ const BookingPage = () => {
   };
 
   const handleBook = async () => {
+    if (!bookingData.hotelId) {
+      alert("Invalid hotel selection. Please go back and try again.");
+      return;
+    }
     setLoading(true);
     try {
-      const token = localStorage.getItem("token")
-      const response = await fetch("/api/bookings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          guestName: `${formData.firstName} ${formData.lastName}`,
-          email: formData.email,
-          propertyId: bookingData.hotelId || "507f1f77bcf86cd799439011", // Use passed hotelId or fallback
-          propertyName: bookingData.hotelName || "Luxury Hotel",
-          checkInDate: new Date(),
-          checkOutDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
-          roomType: bookingData.roomType || "Deluxe Room",
-          amount: bookingData.total || 50000,
-          status: "Pending",
-        }),
+      // Ensure amount is a number
+      let amount = bookingData.total;
+      if (typeof amount === 'string') {
+        amount = parseFloat(amount.replace(/,/g, ''));
+      }
+      if (isNaN(amount)) amount = 50000;
+
+      const response = await api.post("/bookings", {
+        guestName: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        propertyId: bookingData.hotelId || "507f1f77bcf86cd799439001",
+        propertyName: bookingData.hotelName || "Luxury Hotel",
+        checkInDate: new Date(),
+        checkOutDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
+        roomType: bookingData.roomType || "Deluxe Room",
+        amount: amount,
+        status: "Confirmed",
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.data.success) {
         setStep(3);
       } else {
-        alert(data.error || "Booking failed");
+        alert(response.data.error || "Booking failed");
       }
     } catch (error) {
-      alert("Could not connect to the server");
+      alert(error.response?.data?.error || "Could not connect to the server");
     } finally {
       setLoading(false);
     }
@@ -255,14 +258,8 @@ const BookingPage = () => {
               </p>
               <div className="flex justify-center gap-4">
                 <Link
-                  to="/portal"
-                  className="px-8 py-3 bg-black text-white rounded-full font-bold hover:bg-gray-800 transition-colors"
-                >
-                  My Portal
-                </Link>
-                <Link
                   to="/"
-                  className="px-8 py-3 border border-gray-200 rounded-full font-bold hover:bg-gray-50 transition-colors"
+                  className="px-8 py-3 bg-black text-white rounded-full font-bold hover:bg-gray-800 transition-colors"
                 >
                   Back Home
                 </Link>

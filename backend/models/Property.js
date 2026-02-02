@@ -26,7 +26,14 @@ const propertySchema = new mongoose.Schema({
     default: 0
   },
   description: String,
-  images: [String]
+  images: [String],
+  amenities: [String],
+  latitude: Number,
+  longitude: Number,
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }
 }, {
   timestamps: true
 });

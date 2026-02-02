@@ -6,39 +6,94 @@ import gsap from 'gsap';
 import api from '../utils/api';
 
 const SearchPage = () => {
-
-
-  const [allHotels, setAllHotels] = useState(hotels);
+  const [allHotels, setAllHotels] = useState([]);
+  const [displayedHotels, setDisplayedHotels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userCoords, setUserCoords] = useState(null);
+  const [isNearMeActive, setIsNearMeActive] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   useEffect(() => {
     fetchProperties();
   }, []);
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   const fetchProperties = async () => {
     try {
       setLoading(true);
       const res = await api.get('/properties');
       if (res.data.success) {
-        // Map backend properties to match frontend hotel structure
         const apiProperties = res.data.data.map(p => ({
           id: p._id,
           name: p.name,
           location: p.location,
           price: p.pricePerNight,
           rating: p.rating,
+          latitude: p.latitude,
+          longitude: p.longitude,
           image: p.images?.[0] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
           amenities: p.amenities || ["Wifi", "Parking"]
         }));
 
-        // Merge API properties with mock data, avoiding duplicates if any
-        setAllHotels([...apiProperties, ...hotels]);
+        const finalHotels = apiProperties.length > 0 ? apiProperties : hotels;
+        setAllHotels(finalHotels);
+        setDisplayedHotels(finalHotels);
       }
     } catch (error) {
       console.error("Error fetching properties:", error);
+      setAllHotels(hotels);
+      setDisplayedHotels(hotels);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNearMeToggle = (isAuto = false) => {
+    if (isNearMeActive && !isAuto) {
+      setIsNearMeActive(false);
+      setDisplayedHotels(allHotels);
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        };
+        setUserCoords(coords);
+        sortByProximity(coords);
+        setIsNearMeActive(true);
+        setIsLocating(false);
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        setIsLocating(false);
+        if (!isAuto) alert("Could not access your location. Please enable location permissions.");
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
+  const sortByProximity = (coords) => {
+    const sorted = [...allHotels].map(h => ({
+      ...h,
+      distance: calculateDistance(coords.lat, coords.lon, h.latitude, h.longitude)
+    })).sort((a, b) => a.distance - b.distance);
+    setDisplayedHotels(sorted);
   };
 
   useEffect(() => {
@@ -48,7 +103,7 @@ const SearchPage = () => {
         { opacity: 1, y: 0, duration: 0.5, stagger: 0.1, ease: "power2.out" }
       );
     }
-  }, [loading]);
+  }, [loading, displayedHotels]);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-12">
@@ -56,11 +111,24 @@ const SearchPage = () => {
         {/* Header & Filters */}
         <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Find your perfect stay in Nepal</h1>
-            <p className="text-gray-500">Showing {allHotels.length} properties</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {isNearMeActive ? 'Hotels Near You' : 'Find your perfect stay in Nepal'}
+            </h1>
+            <p className="text-gray-500">Showing {displayedHotels.length} properties</p>
           </div>
 
           <div className="flex gap-3">
+            <button
+              onClick={handleNearMeToggle}
+              className={`flex items-center gap-2 px-4 py-2 border rounded-full text-sm font-medium transition-all ${isNearMeActive
+                ? 'bg-[#0071e3] text-white border-[#0071e3]'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-black'
+                } ${isLocating ? 'opacity-70 cursor-wait' : ''}`}
+              disabled={isLocating}
+            >
+              <MapPin size={16} className={isLocating ? 'animate-bounce' : ''} />
+              {isLocating ? 'Locating...' : isNearMeActive ? 'Near Me Active' : 'Near Me'}
+            </button>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-full text-sm font-medium hover:border-black transition-colors">
               <Filter size={16} /> Filters
             </button>
@@ -69,34 +137,48 @@ const SearchPage = () => {
               <input
                 type="text"
                 placeholder="Search hotels..."
-                className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-full text-sm outline-none focus:border-black w-64"
+                className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-full text-sm focus:outline-none focus:border-black w-64"
+                onChange={(e) => {
+                  const query = e.target.value.toLowerCase();
+                  setDisplayedHotels(allHotels.filter(h =>
+                    h.name.toLowerCase().includes(query) ||
+                    h.location.toLowerCase().includes(query)
+                  ));
+                }}
               />
             </div>
           </div>
         </div>
 
-        {/* Hotel Grid */}
+        {/* Results Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {allHotels.map((hotel) => (
-            <div key={hotel.id} className="hotel-card group bg-white rounded-[32px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.06)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.12)] transition-all duration-500 border border-gray-100/50 flex flex-col">
+          {displayedHotels.map((hotel) => (
+            <div key={hotel.id} className="hotel-card bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-2xl transition-all duration-500 group flex flex-col h-full">
               {/* Image Section */}
               <div className="relative h-72 overflow-hidden">
                 <img
                   src={hotel.image}
                   alt={hotel.name}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                 />
-
-                {/* Top Overlay Elements */}
-                <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-                  <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                <div className="absolute top-4 right-4 flex flex-col gap-2">
+                  <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-full flex items-center gap-1 shadow-sm">
                     <Star size={14} className="text-yellow-500 fill-yellow-500" />
-                    <span className="text-sm font-bold text-[#1d1d1f]">{hotel.rating}</span>
+                    <span className="text-sm font-bold">{hotel.rating}</span>
                   </div>
-
+                  {hotel.distance && hotel.distance !== Infinity && (
+                    <div className={`px-3 py-1.5 backdrop-blur-md text-white rounded-full flex items-center gap-1 shadow-sm ${index === 0 ? 'bg-green-600/90' : 'bg-[#0071e3]/90'}`}>
+                      <MapPin size={12} />
+                      <span className="text-xs font-bold">
+                        {index === 0 ? 'Closest: ' : ''}
+                        {hotel.distance.toFixed(1)} km
+                      </span>
+                    </div>
+                  )}
                   <button
                     onClick={(e) => {
-                      e.stopPropagation();
+                      e.preventDefault();
+                      // Handle favorite
                     }}
                     className="p-2.5 bg-white/90 backdrop-blur-md rounded-full hover:bg-white transition-colors shadow-sm text-[#1d1d1f] hover:text-red-500"
                   >
@@ -132,7 +214,7 @@ const SearchPage = () => {
                 <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-100">
                   <div>
                     <p className="text-[#86868b] text-xs font-medium uppercase tracking-wide">Price per night</p>
-                    <p className="text-xl font-bold text-[#1d1d1f]">Rs. {hotel.price}</p>
+                    <p className="text-xl font-bold text-[#1d1d1f]">Rs. {hotel.price.toLocaleString()}</p>
                   </div>
 
                   <Link

@@ -8,6 +8,17 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
+    // Check if registering as owner and if an owner already exists
+    if (role === 'owner') {
+      const ownerExists = await User.findOne({ role: 'owner' });
+      if (ownerExists) {
+        return res.status(400).json({
+          success: false,
+          error: 'An owner already exists. Only one owner is allowed in the system.'
+        });
+      }
+    }
+
     // Create user
     const user = await User.create({
       name,
@@ -92,6 +103,52 @@ exports.getMe = async (req, res) => {
       success: true,
       data: user
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// @desc    Update user details
+// @route   PUT /api/auth/updatedetails
+// @access  Private
+exports.updateDetails = async (req, res) => {
+  try {
+    const fieldsToUpdate = {
+      name: req.body.name,
+      email: req.body.email,
+      phone: req.body.phone
+    };
+
+    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
+      new: true,
+      runValidators: true
+    });
+
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// @desc    Update password
+// @route   PUT /api/auth/updatepassword
+// @access  Private
+exports.updatePassword = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('+password');
+
+    // Check current password
+    if (!(await user.matchPassword(req.body.currentPassword))) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+
+    user.password = req.body.newPassword;
+    await user.save();
+
+    sendTokenResponse(user, 200, res);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

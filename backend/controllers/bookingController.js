@@ -74,14 +74,44 @@ exports.createBooking = async (req, res) => {
 
     const booking = await Booking.create(req.body);
 
-    // Notify admin/dashboard
+    // Find the property owner to notify them
+    const Property = require('../models/Property');
+    const property = await Property.findById(booking.propertyId);
+
+    let ownerToNotify = property && property.owner ? property.owner : null;
+
+    // If no property owner found (e.g. mock booking), notify the primary owner
+    if (!ownerToNotify) {
+      const User = require('../models/User');
+      const primaryOwner = await User.findOne({ role: 'owner' });
+      if (primaryOwner) {
+        ownerToNotify = primaryOwner._id;
+      }
+    }
+
+    // Notify property owner
+    if (ownerToNotify) {
+      await Notification.create({
+        userId: ownerToNotify,
+        title: "New Booking Received",
+        message: `${booking.guestName} booked ${booking.propertyName}`,
+        type: "booking",
+        metadata: {
+          bookingId: booking._id.toString(),
+          propertyId: booking.propertyId.toString(),
+          guestEmail: booking.email,
+        },
+      });
+    }
+
+    // Also notify the guest
     await Notification.create({
-      title: "New Booking Received",
-      message: `${booking.guestName} booked ${booking.propertyName}`,
-      type: "booking",
+      userId: req.user.id,
+      title: "Booking Confirmed",
+      message: `Your booking for ${booking.propertyName} has been received.`,
+      type: "success",
       metadata: {
         bookingId: booking._id.toString(),
-        guestEmail: booking.email,
       },
     });
 
