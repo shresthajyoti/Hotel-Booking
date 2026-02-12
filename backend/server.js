@@ -5,6 +5,8 @@ const helmet = require("helmet");
 const xssFilter = require("xss");
 const rateLimit = require("express-rate-limit");
 const hpp = require("hpp");
+const session = require("express-session");
+const morgan = require("morgan");
 const connectDB = require("./config/db");
 
 // Load env vars
@@ -17,6 +19,24 @@ const app = express();
 
 // Body parser
 app.use(express.json());
+
+// Logging
+if (process.env.NODE_ENV === "development") {
+  app.use(morgan("dev"));
+}
+
+// Session
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "fallback_secret",
+    resave: false,
+    saveUninitialized: true,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  })
+);
 
 // Enable CORS
 app.use(
@@ -88,6 +108,7 @@ app.use("/api/properties", require("./routes/propertyRoutes"));
 app.use("/api/bookings", require("./routes/bookingRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/messages", require("./routes/messageRoutes"));
+app.use("/api/chat", require("./routes/chatbotRoutes"));
 
 const PORT = process.env.PORT || 5000;
 

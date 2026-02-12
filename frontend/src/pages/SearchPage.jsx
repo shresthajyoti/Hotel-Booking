@@ -152,7 +152,7 @@ const SearchPage = () => {
 
         {/* Results Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {displayedHotels.map((hotel) => (
+          {displayedHotels.map((hotel, index) => (
             <div key={hotel.id} className="hotel-card bg-white rounded-3xl overflow-hidden border border-gray-100 hover:shadow-2xl transition-all duration-500 group flex flex-col h-full">
               {/* Image Section */}
               <div className="relative h-72 overflow-hidden">

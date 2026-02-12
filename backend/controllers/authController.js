@@ -8,17 +8,6 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Check if registering as owner and if an owner already exists
-    if (role === 'owner') {
-      const ownerExists = await User.findOne({ role: 'owner' });
-      if (ownerExists) {
-        return res.status(400).json({
-          success: false,
-          error: 'An owner already exists. Only one owner is allowed in the system.'
-        });
-      }
-    }
-
     // Create user
     const user = await User.create({
       name,
@@ -116,7 +105,8 @@ exports.updateDetails = async (req, res) => {
     const fieldsToUpdate = {
       name: req.body.name,
       email: req.body.email,
-      phone: req.body.phone
+      phone: req.body.phone,
+      avatar: req.body.avatar
     };
 
     const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {

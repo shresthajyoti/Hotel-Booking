@@ -10,15 +10,8 @@ exports.getStats = async (req, res) => {
     let filter = {};
     if (req.user.role === 'owner') {
       const myProperties = await Property.find({ owner: req.user._id });
-      const propertyIds = myProperties.map(p => new mongoose.Types.ObjectId(p._id));
-      // Show owner's properties, plus orphan bookings (for testing/mock data)
-      filter = {
-        $or: [
-          { propertyId: { $in: propertyIds } },
-          { propertyId: new mongoose.Types.ObjectId("507f1f77bcf86cd799439001") }, // Placeholder ID
-          { propertyName: { $exists: true } } // Fallback to show all named bookings for the single owner
-        ]
-      };
+      const propertyIds = myProperties.map(p => p._id);
+      filter = { propertyId: { $in: propertyIds } };
     } else if (req.user.role === 'traveler') {
       filter = { email: req.user.email };
     }
@@ -56,7 +49,7 @@ exports.getStats = async (req, res) => {
         totalRevenue: `Rs. ${(totalRevenue / 1000).toFixed(1)}K`,
         totalBookings,
         activeGuests: activeGuests.length,
-        occupancy: `${Math.max(occupancy, Math.floor(Math.random() * 20) + 60)}%` // Fallback to a realistic number for demo if 0
+        occupancy: `${occupancy}%`
       }
     });
   } catch (error) {
@@ -76,14 +69,8 @@ exports.getRecentBookings = async (req, res) => {
       filter = email ? { email } : {};
     } else if (req.user.role === 'owner') {
       const myProperties = await Property.find({ owner: req.user._id });
-      const propertyIds = myProperties.map(p => new mongoose.Types.ObjectId(p._id));
-      filter = {
-        $or: [
-          { propertyId: { $in: propertyIds } },
-          { propertyId: new mongoose.Types.ObjectId("507f1f77bcf86cd799439001") },
-          { propertyName: { $exists: true } }
-        ]
-      };
+      const propertyIds = myProperties.map(p => p._id);
+      filter = { propertyId: { $in: propertyIds } };
       if (email) filter.email = email;
     } else {
       // Travelers
@@ -145,14 +132,8 @@ exports.getGuests = async (req, res) => {
     let filter = {};
     if (req.user.role === 'owner') {
       const myProperties = await Property.find({ owner: req.user._id });
-      const propertyIds = myProperties.map(p => new mongoose.Types.ObjectId(p._id));
-      filter = {
-        $or: [
-          { propertyId: { $in: propertyIds } },
-          { propertyId: new mongoose.Types.ObjectId("507f1f77bcf86cd799439001") },
-          { propertyName: { $exists: true } }
-        ]
-      };
+      const propertyIds = myProperties.map(p => p._id);
+      filter = { propertyId: { $in: propertyIds } };
     } else if (req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
@@ -185,14 +166,8 @@ exports.getRevenueAnalytics = async (req, res) => {
     let filter = {};
     if (req.user.role === 'owner') {
       const myProperties = await Property.find({ owner: req.user._id });
-      const propertyIds = myProperties.map(p => new mongoose.Types.ObjectId(p._id));
-      filter = {
-        $or: [
-          { propertyId: { $in: propertyIds } },
-          { propertyId: new mongoose.Types.ObjectId("507f1f77bcf86cd799439001") },
-          { propertyName: { $exists: true } }
-        ]
-      };
+      const propertyIds = myProperties.map(p => p._id);
+      filter = { propertyId: { $in: propertyIds } };
     } else if (req.user.role === 'traveler') {
       filter = { email: req.user.email };
     }
@@ -228,7 +203,7 @@ exports.getRevenueAnalytics = async (req, res) => {
       const match = analytics.find(a => a._id === dateStr);
       return {
         label: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        value: match ? match.revenue : Math.floor(Math.random() * 5000) + 2000, // Partial mock for empty data to look good
+        value: match ? match.revenue : 0,
         fullDate: dateStr
       };
     });
@@ -254,14 +229,13 @@ exports.getRevenueAnalytics = async (req, res) => {
     const totalConfirmed = propertyStats.reduce((acc, p) => acc + p.count, 0);
     const distribution = propertyStats.map(p => ({
       name: p._id || "Other",
-      percentage: totalConfirmed > 0 ? Math.round((p.count / totalConfirmed) * 100) : Math.floor(Math.random() * 30) + 10
+      percentage: totalConfirmed > 0 ? Math.round((p.count / totalConfirmed) * 100) : 0
     })).sort((a, b) => b.percentage - a.percentage).slice(0, 5);
 
     // If no real properties, provide some mock data for UI
+    // If no real properties, provide empty array
     if (distribution.length === 0) {
-      distribution.push({ name: 'Mountain Resort', percentage: 45 });
-      distribution.push({ name: 'City Hotel', percentage: 35 });
-      distribution.push({ name: 'Lakeside Inn', percentage: 20 });
+      // distribution.push({ name: 'Mountain Resort', percentage: 45 });
     }
 
     res.status(200).json({

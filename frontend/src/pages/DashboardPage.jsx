@@ -36,10 +36,13 @@ const DashboardPage = () => {
   const [propertyDistribution, setPropertyDistribution] = useState([]);
   const [sourcesAnalytics, setSourcesAnalytics] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
+  const [editingBooking, setEditingBooking] = useState(null);
   const [settingsFormData, setSettingsFormData] = useState({
-    name: '',
-    email: '',
-    phone: ''
+    name: user.name || '',
+    email: user.email || '',
+    phone: user.phone || '',
+    avatar: user.avatar || ''
   });
   const [passwordFormData, setPasswordFormData] = useState({
     currentPassword: '',
@@ -69,7 +72,7 @@ const DashboardPage = () => {
         api.get(`${API_BASE_URL}/guests`),
         api.get(`/notifications`),
         api.get(`${API_BASE_URL}/analytics`),
-        api.get(`/messages/conversations/${user._id}`)
+        user.id ? api.get(`/messages/conversations/${user.id}`) : Promise.resolve({ data: { success: true, data: [] } })
       ]);
 
       // Handle stats with static mock fallbacks for empty data
@@ -141,11 +144,13 @@ const DashboardPage = () => {
         setConversations(convosRes.data.data || []);
       }
 
-      // Sync settings form
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      setUser(userData);
       setSettingsFormData({
-        name: user.name || '',
-        email: user.email || '',
-        phone: user.phone || ''
+        name: userData.name || '',
+        email: userData.email || '',
+        phone: userData.phone || '',
+        avatar: userData.avatar || ''
       });
 
     } catch (error) {
@@ -174,11 +179,11 @@ const DashboardPage = () => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (!activeContact) return;
 
-      const res = await api.get(`/messages?userId=${user._id}`);
+      const res = await api.get(`/messages?userId=${user.id}`);
       if (res.data.success) {
         const filtered = res.data.data.filter(m =>
-          (m.senderId === user._id && m.receiverId === activeContact._id) ||
-          (m.senderId === activeContact._id && m.receiverId === user._id)
+          (m.senderId === user.id && m.receiverId === activeContact._id) ||
+          (m.senderId === activeContact._id && m.receiverId === user.id)
         );
 
         // Only update if messages actually changed to avoid unnecessary re-renders
@@ -198,7 +203,7 @@ const DashboardPage = () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const newMessage = {
-        senderId: user._id,
+        senderId: user.id,
         receiverId: activeContact._id || "6584c3e8f8a2b5a1a8e1b2c4",
         content
       };
@@ -289,6 +294,7 @@ const DashboardPage = () => {
         const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
         const updatedUser = { ...currentUser, ...res.data.data };
         localStorage.setItem('user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
         alert('Profile updated successfully!');
       }
     } catch (error) {
@@ -408,26 +414,39 @@ const DashboardPage = () => {
     const selectedPropName = formData.get('property');
     const selectedProp = properties.find(p => p.name === selectedPropName);
 
-    const newBooking = {
+    const bookingData = {
       guestName: formData.get('guestName'),
       email: formData.get('email'),
       propertyName: selectedPropName,
       roomType: formData.get('roomType'),
-      checkInDate: new Date().toISOString(),
-      checkOutDate: new Date().toISOString(),
-      amount: selectedProp ? selectedProp.pricePerNight : 5000,
       propertyId: selectedProp ? (selectedProp._id || selectedProp.id) : "6584c3e8f8a2b5a1a8e1b2c4"
     };
 
     try {
-      const res = await api.post(`${API_BASE_URL}/bookings`, newBooking);
-      if (res.data.success) {
-        setBookings([res.data.data, ...bookings]);
-        setIsModalOpen(false);
-        fetchDashboardData(); // Refresh stats
+      if (editingBooking) {
+        const res = await api.put(`/bookings/${editingBooking._id}`, bookingData);
+        if (res.data.success) {
+          setBookings(bookings.map(b => b._id === editingBooking._id ? res.data.data : b));
+          setIsModalOpen(false);
+          setEditingBooking(null);
+          alert('Booking updated successfully');
+        }
+      } else {
+        const res = await api.post(`${API_BASE_URL}/bookings`, {
+          ...bookingData,
+          checkInDate: new Date().toISOString(),
+          checkOutDate: new Date().toISOString(),
+          amount: selectedProp ? selectedProp.pricePerNight : 5000,
+        });
+        if (res.data.success) {
+          setBookings([res.data.data, ...bookings]);
+          setIsModalOpen(false);
+          fetchDashboardData();
+        }
       }
     } catch (error) {
-      console.error("Error adding booking:", error);
+      console.error("Error saving booking:", error);
+      alert(error.response?.data?.error || "Failed to save booking");
     }
   };
 
@@ -481,7 +500,7 @@ const DashboardPage = () => {
             <div>
               <p className="px-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Apps</p>
               <nav className="space-y-0.5">
-                <SidebarItem icon={Mail} label="Messages" active={activeTab === 'messages'} badge="2" onClick={() => setActiveTab('messages')} />
+                <SidebarItem icon={Mail} label="Messages" active={activeTab === 'messages'} badge={conversations.length > 0 ? conversations.length.toString() : null} onClick={() => setActiveTab('messages')} />
                 <SidebarItem icon={BarChart3} label="Analytics" onClick={() => setActiveTab('analytics')} />
                 <SidebarItem icon={Settings} label="Settings" onClick={() => setActiveTab('settings')} />
               </nav>
@@ -573,11 +592,15 @@ const DashboardPage = () => {
 
             <div className="flex items-center gap-3 pl-1">
               <div className="text-right hidden md:block">
-                <p className="text-sm font-semibold text-gray-900 leading-none">{JSON.parse(localStorage.getItem('user') || '{}').name || 'Ram Sir'}</p>
-                <p className="text-[11px] text-gray-500 mt-1 leading-none">{localStorage.getItem('userType') === 'owner' ? 'Hotel Manager' : 'Admin'}</p>
+                <p className="text-sm font-semibold text-gray-900 leading-none">{user.name}</p>
+                <p className="text-[11px] text-gray-500 mt-1 leading-none">{localStorage.getItem('userType') === 'owner' ? 'Hotel Owner' : 'Administrator'}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-linear-to-br from-green-500 to-green-600 overflow-hidden border border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
-                {JSON.parse(localStorage.getItem('user') || '{}').name?.split(' ').map(n => n[0]).join('') || 'RS'}
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-indigo-500 to-blue-600 overflow-hidden border border-white shadow-sm flex items-center justify-center text-white text-xs font-bold">
+                {user.avatar ? (
+                  <img src={user.avatar} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  user.name?.split(' ').map(n => n[0]).join('') || 'U'
+                )}
               </div>
             </div>
           </div>
@@ -593,7 +616,7 @@ const DashboardPage = () => {
               <div className="flex justify-between items-end animate-enter">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-                    Admin Dashboard
+                    {localStorage.getItem('userType') === 'owner' ? 'Owner Dashboard' : 'Admin Dashboard'}
                   </h1>
                   <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
                     <span>Performance Overview</span>
@@ -645,29 +668,82 @@ const DashboardPage = () => {
                     </button>
                   </div>
 
-                  {/* CSS Bar Chart */}
-                  <div className="h-56 flex items-end justify-between gap-3">
-                    {(revenueAnalytics.length > 0 ? revenueAnalytics : [40, 65, 55, 80, 60, 90, 75, 85, 95, 70, 60, 80]).map((item, i) => {
-                      const value = typeof item === 'object' ? item.value : item;
-                      const maxVal = Math.max(...(revenueAnalytics.map(d => d.value) || [100]));
-                      const h = typeof item === 'object' ? (value / maxVal) * 100 : item;
-                      return (
-                        <div key={i} className="flex-1 flex flex-col justify-end group cursor-pointer">
-                          <div
-                            className="w-full bg-[#0071e3]/10 rounded-t-md transition-all duration-300 group-hover:bg-[#0071e3] relative"
-                            style={{ height: `${Math.max(h, 5)}%` }}
-                          >
-                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                              {typeof item === 'object' ? `Rs. ${value.toLocaleString()}` : `${item}k`}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {/* Premium SVG Line/Area Chart */}
+                  <div className="h-64 mt-4 relative">
+                    <svg className="w-full h-full" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#0071e3" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#0071e3" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Grid Lines */}
+                      {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
+                        <line
+                          key={i}
+                          x1="0"
+                          y1={`${100 - p * 100}%`}
+                          x2="100%"
+                          y2={`${100 - p * 100}%`}
+                          stroke="#f3f4f6"
+                          strokeWidth="1"
+                        />
+                      ))}
+
+                      {(() => {
+                        const data = revenueAnalytics.length > 0 ? revenueAnalytics : [
+                          { label: 'Jan', value: 45000 }, { label: 'Feb', value: 52000 }, { label: 'Mar', value: 48000 },
+                          { label: 'Apr', value: 61000 }, { label: 'May', value: 55000 }, { label: 'Jun', value: 67000 },
+                          { label: 'Jul', value: 72000 }, { label: 'Aug', value: 68000 }, { label: 'Sep', value: 75000 },
+                          { label: 'Oct', value: 82000 }, { label: 'Nov', value: 88000 }, { label: 'Dec', value: 95000 }
+                        ];
+                        const values = data.map(d => d.value);
+                        const max = Math.max(...values, 1);
+                        const points = data.map((d, i) => ({
+                          x: (i / (data.length - 1)) * 100,
+                          y: 100 - (d.value / max) * 80 - 10 // 10% padding
+                        }));
+
+                        const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x}% ${p.y}%`).join(' ');
+                        const areaPath = `${linePath} L 100% 100% L 0% 100% Z`;
+
+                        return (
+                          <>
+                            <path d={areaPath} fill="url(#revenueGradient)" className="transition-all duration-1000" />
+                            <path d={linePath} fill="none" stroke="#0071e3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="transition-all duration-1000" />
+
+                            {points.map((p, i) => (
+                              <g key={i} className="group/point">
+                                <circle
+                                  cx={`${p.x}%`}
+                                  cy={`${p.y}%`}
+                                  r="4"
+                                  fill="white"
+                                  stroke="#0071e3"
+                                  strokeWidth="2.5"
+                                  className="transition-all duration-200 group-hover/point:r-6 cursor-pointer"
+                                />
+                                <foreignObject x={`${p.x}%`} y={`${p.y - 12}%`} width="1" height="1" className="overflow-visible pointer-events-none">
+                                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] font-bold py-1 px-2 rounded opacity-0 group-hover/point:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-xl">
+                                    Rs. {(data[i].value).toLocaleString()}
+                                  </div>
+                                </foreignObject>
+                              </g>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </svg>
                   </div>
-                  <div className="flex justify-between mt-4 text-[10px] text-gray-400 font-medium uppercase tracking-wider">
-                    {(revenueAnalytics.length > 0 ? revenueAnalytics.map(d => d.label) : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']).map(m => (
-                      <span key={m}>{m}</span>
+
+                  <div className="flex justify-between mt-6 px-1 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                    {(revenueAnalytics.length > 0 ? revenueAnalytics : [
+                      { label: 'Jan' }, { label: 'Feb' }, { label: 'Mar' }, { label: 'Apr' },
+                      { label: 'May' }, { label: 'Jun' }, { label: 'Jul' }, { label: 'Aug' },
+                      { label: 'Sep' }, { label: 'Oct' }, { label: 'Nov' }, { label: 'Dec' }
+                    ]).map((d, i) => (
+                      <span key={i} className="flex-1 text-center">{d.label}</span>
                     ))}
                   </div>
                 </div>
@@ -772,13 +848,44 @@ const DashboardPage = () => {
                               </span>
                             </td>
                             <td className="py-3 px-6">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${getStatusStyle(booking.status)}`}>
-                                {booking.status}
-                              </span>
+                              <select
+                                value={booking.status}
+                                onChange={async (e) => {
+                                  try {
+                                    const newStatus = e.target.value;
+                                    const res = await api.put(`/bookings/${booking._id}`, { status: newStatus });
+                                    if (res.data.success) {
+                                      setBookings(bookings.map(b =>
+                                        b._id === booking._id ? { ...b, status: newStatus } : b
+                                      ));
+                                    }
+                                  } catch (err) {
+                                    console.error("Error updating booking status:", err);
+                                    alert("Failed to update status");
+                                  }
+                                }}
+                                className={`px-2 py-0.5 rounded-full text-[11px] font-medium border-none outline-none cursor-pointer ${getStatusStyle(booking.status)}`}
+                              >
+                                <option value="Confirmed">Confirmed</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
                             </td>
-                            <td className="py-3 px-6 text-right">
-                              <button className="p-1.5 text-gray-400 hover:text-[#0071e3] hover:bg-blue-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                                <MoreHorizontal size={16} />
+                            <td className="py-3 px-6 text-right flex justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingBooking(booking);
+                                  setIsModalOpen(true);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-[#0071e3] hover:bg-blue-50 rounded-lg transition-all"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteBooking(booking._id)}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <Trash2 size={16} />
                               </button>
                             </td>
                           </tr>
@@ -928,10 +1035,19 @@ const DashboardPage = () => {
                             <option value="Cancelled">Cancelled</option>
                           </select>
                         </td>
-                        <td className="py-4 px-6 text-right">
+                        <td className="py-4 px-6 text-right flex justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingBooking(booking);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-[#0071e3] hover:bg-blue-50 rounded-lg transition-all"
+                          >
+                            <Edit size={16} />
+                          </button>
                           <button
                             onClick={() => handleDeleteBooking(booking._id)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
                           >
                             <Trash2 size={16} />
                           </button>
@@ -963,8 +1079,10 @@ const DashboardPage = () => {
                       <h3 className="font-bold text-gray-900">{guest.name}</h3>
                       <p className="text-xs text-gray-500 mt-0.5">{guest.email}</p>
                       <div className="mt-3 flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-[#0071e3] bg-blue-50 px-2 py-0.5 rounded-md uppercase tracking-wider">Premium</span>
-                        <span className="text-[10px] text-gray-400 font-medium">12 Bookings</span>
+                        <span className="text-[10px] font-bold text-[#0071e3] bg-blue-50 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                          {guest.totalBookings > 1 ? 'Regular' : 'New'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-medium">{guest.totalBookings} {guest.totalBookings === 1 ? 'Booking' : 'Bookings'}</span>
                       </div>
                     </div>
                     <ChevronRight size={18} className="text-gray-300 group-hover:text-[#0071e3] transition-colors" />
@@ -1206,13 +1324,26 @@ const DashboardPage = () => {
 
               <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-8 border-b border-gray-100 flex items-center gap-6 bg-gray-50/30">
-                  <div className="w-20 h-20 rounded-2xl bg-[#0071e3] flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-blue-500/10">
-                    {settingsFormData.name?.charAt(0)}
+                  <div className="w-20 h-20 rounded-2xl bg-indigo-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-indigo-500/10 overflow-hidden">
+                    {settingsFormData.avatar ? (
+                      <img src={settingsFormData.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      settingsFormData.name?.charAt(0) || 'U'
+                    )}
                   </div>
                   <div>
                     <h2 className="text-lg font-bold text-gray-900">{settingsFormData.name}</h2>
                     <p className="text-sm text-gray-500">{settingsFormData.email}</p>
-                    <button className="text-xs font-bold text-[#0071e3] mt-2 hover:underline">Change Photo</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = prompt('Enter image URL:', settingsFormData.avatar);
+                        if (url !== null) setSettingsFormData({ ...settingsFormData, avatar: url });
+                      }}
+                      className="text-xs font-bold text-[#0071e3] mt-2 hover:underline"
+                    >
+                      Change Photo
+                    </button>
                   </div>
                 </div>
                 <div className="p-8 space-y-10">
@@ -1310,45 +1441,83 @@ const DashboardPage = () => {
           ></div>
           <div ref={modalRef} className="bg-white rounded-[24px] shadow-2xl w-full max-w-md relative z-10 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-lg font-bold text-gray-900">New Booking</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-gray-200 rounded-full transition-colors text-gray-500">
+              <h3 className="text-lg font-bold text-gray-900">{editingBooking ? 'Edit Booking' : 'New Booking'}</h3>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingBooking(null);
+                }}
+                className="p-1.5 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+              >
                 <X size={18} />
               </button>
             </div>
             <form onSubmit={handleAddBooking} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Guest Name</label>
-                <input type="text" name="guestName" required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm" placeholder="John Doe" />
+                <input
+                  type="text"
+                  name="guestName"
+                  required
+                  defaultValue={editingBooking?.guestName}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm"
+                  placeholder="John Doe"
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Email</label>
-                <input type="email" name="email" required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm" placeholder="john@example.com" />
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  defaultValue={editingBooking?.email}
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm"
+                  placeholder="john@example.com"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Property</label>
-                  <select name="property" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm appearance-none">
-                    {properties.length > 0 ? (
-                      properties.map(p => (
-                        <option key={p._id || p.id}>{p.name}</option>
-                      ))
-                    ) : (
-                      <option>No Properties Available</option>
-                    )}
+                  <select
+                    name="property"
+                    defaultValue={editingBooking?.propertyName}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm appearance-none"
+                  >
+                    {properties.map(p => (
+                      <option key={p._id || p.id} value={p.name}>{p.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Room Type</label>
-                  <select name="roomType" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm appearance-none">
-                    <option>Standard</option>
-                    <option>Deluxe</option>
-                    <option>Suite</option>
+                  <select
+                    name="roomType"
+                    defaultValue={editingBooking?.roomType}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0071e3]/20 focus:border-[#0071e3] transition-all text-sm appearance-none"
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Deluxe">Deluxe</option>
+                    <option value="Suite">Suite</option>
                   </select>
                 </div>
               </div>
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors text-gray-600">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2.5 bg-[#0071e3] text-white rounded-xl font-medium text-sm hover:bg-[#0077ed] transition-colors shadow-lg shadow-blue-500/20">Create Booking</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingBooking(null);
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl font-medium text-sm hover:bg-gray-50 transition-colors text-gray-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2.5 bg-[#0071e3] text-white rounded-xl font-medium text-sm hover:bg-[#0077ed] transition-colors shadow-lg shadow-blue-500/20 active:scale-95"
+                >
+                  {editingBooking ? 'Save Changes' : 'Create Booking'}
+                </button>
               </div>
             </form>
           </div>

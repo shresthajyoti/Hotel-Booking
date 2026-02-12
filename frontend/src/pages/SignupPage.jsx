@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, Building2, Mail, Lock, Eye, EyeOff, ArrowRight, Phone, MapPin } from 'lucide-react';
 import gsap from 'gsap';
 
@@ -20,6 +20,8 @@ const SignupPage = () => {
 
   const formRef = useRef(null);
   const headerRef = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const tl = gsap.timeline();
@@ -72,9 +74,10 @@ const SignupPage = () => {
         localStorage.setItem('userType', userType); // 'owner' or 'traveler'
 
         if (userType === 'owner') {
-          window.location.href = '/dashboard';
+          navigate('/dashboard', { replace: true });
         } else {
-          window.location.href = '/';
+          const from = location.state?.from?.pathname || '/';
+          navigate(from, { replace: true });
         }
       } else {
         alert(data.error || 'Registration failed');

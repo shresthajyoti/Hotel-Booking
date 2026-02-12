@@ -20,12 +20,12 @@ const LoginPage = () => {
   // Demo credentials
   const credentials = {
     owner: [
-      { email: 'owner@roomora.com', password: 'owner123' },
+      { email: 'owner@gmail.com', password: 'owner123' },
       { email: 'john.owner@gmail.com', password: 'HotelOwner@2024' },
       { email: 'sarah.manager@gmail.com', password: 'Manager@2024' }
     ],
     traveler: [
-      { email: 'traveler@roomora.com', password: 'traveler123' },
+      { email: 'traveler@gmail.com', password: 'traveler123' },
       { email: 'ramesh.sharma@gmail.com', password: 'Traveler@2024' },
       { email: 'maya.gurung@gmail.com', password: 'Guest@2024' }
     ]
@@ -70,7 +70,8 @@ const LoginPage = () => {
         if (role === 'admin' || role === 'owner') {
           navigate('/dashboard', { replace: true });
         } else {
-          navigate('/', { replace: true });
+          const from = location.state?.from?.pathname || '/';
+          navigate(from, { replace: true });
         }
       } else {
         setError(data.error || 'Invalid email or password.');
